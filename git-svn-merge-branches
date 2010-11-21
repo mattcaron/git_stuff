@@ -1,0 +1,69 @@
+#!/usr/bin/perl -w
+
+# This script merges $branch into origin/$branch, so that new changes
+# from svn (in $branch) get merged in correctly to the existing code
+# (duplicates are removed). Then when you do a push you have nice,
+# updated code.
+
+use strict;
+use diagnostics;
+use Data::Dumper;
+
+use constant GIT_BRANCH => "git branch -r";
+use constant GIT_CHECKOUT => "git checkout";
+use constant GIT_MERGE => "git merge -q";
+use constant ORIGIN_PREFIX => "origin/";
+
+open(my $branches,GIT_BRANCH . "|") || die "Unable to execute git branch: $?\n";
+
+my @originBranches;
+my @regularBranches;
+
+sub trim($){
+    my ($thingy) = @_;
+
+    $thingy =~ s/^\s+//;
+    $thingy =~ s/\s+$//;
+
+    return $thingy;
+}
+
+while(my $branch = <$branches>){
+    $branch = trim($branch);
+    my $prefix = ORIGIN_PREFIX;
+    if($branch =~ /$prefix/){
+        push(@originBranches,$branch);
+    }
+    else{
+        push(@regularBranches,$branch);
+    }
+}
+
+foreach my $branch (@originBranches){
+    my $base = $branch;
+    my $prefix = ORIGIN_PREFIX;
+    $base =~ s/$prefix//g;
+
+    if($base =~ /HEAD/){
+        print "Skipping HEAD\n";
+    }
+    else {
+        my @found = grep(/^$base$/,@regularBranches);
+
+        if(scalar(@found) == 0){
+            print "Skipping isolated branch $branch\n";
+        }
+        elsif(scalar(@found) > 1){
+            print "Too many matches found for $branch\n";
+        }
+        else{
+            my $checkout = GIT_CHECKOUT;
+            my $merge = GIT_MERGE;
+            print "Merging ${branch} into ${base}\n";
+            system("${checkout} ${base}") == 0 ||
+              die "Unable to checkout ${branch}: $?\n";
+            system("${merge} ${branch}") == 0 ||
+              die "Unable to merge ${base}: $?\n";
+        }
+    }
+}
